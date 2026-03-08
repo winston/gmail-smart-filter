@@ -49,13 +49,18 @@
     return `https://mail.google.com/mail/u/${getAccountIndex()}/#search/${q}`;
   }
 
+  // Strip the +tag from an email address: lenny+foo@sub.com → lenny@sub.com
+  function normalizeEmail(email) {
+    return email.replace(/\+[^@]*@/, '@');
+  }
+
   // Returns { email, name } from a thread row, or null if no email found
   function extractSender(row) {
     const s = row.querySelector(SEL_SENDER_SPAN);
     if (s) {
       const addr = s.getAttribute('email');
       if (addr && addr.includes('@')) {
-        return { email: addr.toLowerCase().trim(), name: s.getAttribute('name') || s.textContent.trim() };
+        return { email: normalizeEmail(addr.toLowerCase().trim()), name: s.getAttribute('name') || s.textContent.trim() };
       }
     }
     const zf = row.querySelector(SEL_SENDER_ZF);
@@ -64,11 +69,11 @@
       const angleMatch = title.match(/<([^>]+@[^>]+)>/);
       if (angleMatch) {
         const nameMatch = title.match(/^(.+?)\s*</);
-        return { email: angleMatch[1].toLowerCase().trim(), name: nameMatch ? nameMatch[1].trim() : angleMatch[1] };
+        return { email: normalizeEmail(angleMatch[1].toLowerCase().trim()), name: nameMatch ? nameMatch[1].trim() : angleMatch[1] };
       }
-      if (title.includes('@')) return { email: title.toLowerCase().trim(), name: title.trim() };
+      if (title.includes('@')) return { email: normalizeEmail(title.toLowerCase().trim()), name: title.trim() };
       const t = zf.textContent.trim();
-      if (t.includes('@')) return { email: t.toLowerCase(), name: t };
+      if (t.includes('@')) return { email: normalizeEmail(t.toLowerCase()), name: t };
     }
     return null;
   }
