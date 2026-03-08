@@ -56,7 +56,7 @@
   }
 
   function buildSearchUrl(email) {
-    const q = encodeURIComponent(`from:${email} is:unread`);
+    const q = encodeURIComponent(`from:${email} is:unread in:inbox`);
     return `https://mail.google.com/mail/u/${getAccountIndex()}/#search/${q}`;
   }
 
