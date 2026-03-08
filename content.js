@@ -5,10 +5,7 @@
   const BACK_KEY     = 'gsf_back_url';
   const STABILIZE_MS = 400;
 
-  // ── Gmail DOM selectors ──────────────────────────────────────────────────────
-  const SEL_UNREAD_ROW  = 'tr.zA.zE';
-  const SEL_SENDER_SPAN = 'span[email]';
-  const SEL_SENDER_ZF   = 'span.zF';
+  const SEL_UNREAD_ROW = 'tr.zA.zE';
 
   // Candidates tried in order when injecting the filter bar
   const INJECT_CANDIDATES = [
@@ -24,20 +21,8 @@
   let stabilizeTimer = null;
   let navDebounce    = null;
 
-
-  // ── URL allowlist ─────────────────────────────────────────────────────────────
-
-  function isAllowedPage() {
-    const hash = decodeURIComponent(location.hash);
-    if (hash === '#inbox') return true;
-    if (hash.startsWith('#section_query/')) {
-      // Exclude individual email views: #section_query/QUERY/MESSAGE_ID
-      return !hash.slice('#section_query/'.length).includes('/');
-    }
-    return false;
-  }
-
   // ── DOM helpers ──────────────────────────────────────────────────────────────
+  // isAllowedPage, normalizeEmail, extractSender, scanDom live in utils.js
 
   function getAccountIndex() {
     const m = location.pathname.match(/\/u\/(\d+)\//);
@@ -49,55 +34,12 @@
     return `https://mail.google.com/mail/u/${getAccountIndex()}/#search/${q}`;
   }
 
-  // Normalise an email address: lowercase, trim, strip +tag
-  function normalizeEmail(email) {
-    return email.toLowerCase().trim().replace(/\+[^@]*@/, '@');
-  }
-
-  // Returns { email, name } from a thread row, or null if no email found
-  function extractSender(row) {
-    const s = row.querySelector(SEL_SENDER_SPAN);
-    if (s) {
-      const addr = s.getAttribute('email');
-      if (addr && addr.includes('@')) {
-        return { email: normalizeEmail(addr), name: s.getAttribute('name') || s.textContent.trim() };
-      }
-    }
-    const zf = row.querySelector(SEL_SENDER_ZF);
-    if (zf) {
-      const title = zf.getAttribute('title') || '';
-      const angleMatch = title.match(/<([^>]+@[^>]+)>/);
-      if (angleMatch) {
-        const nameMatch = title.match(/^(.+?)\s*</);
-        return { email: normalizeEmail(angleMatch[1]), name: nameMatch ? nameMatch[1].trim() : angleMatch[1] };
-      }
-      if (title.includes('@')) return { email: normalizeEmail(title), name: title.trim() };
-      const t = zf.textContent.trim();
-      if (t.includes('@')) return { email: normalizeEmail(t), name: t };
-    }
-    return null;
-  }
-
-  // ── DOM scan ─────────────────────────────────────────────────────────────────
-
-  function scanDom() {
-    const map = new Map();
-    for (const row of document.querySelectorAll(SEL_UNREAD_ROW)) {
-      if (!row.offsetParent) continue; // skip rows hidden by Gmail from previous views
-      const sender = extractSender(row);
-      if (!sender) continue;
-      if (!map.has(sender.email)) map.set(sender.email, { name: sender.name, count: 0 });
-      map.get(sender.email).count++;
-    }
-    return map;
-  }
-
   // ── Scan ─────────────────────────────────────────────────────────────────────
 
   function doScan() {
     clearTimeout(stabilizeTimer);
-    if (!isAllowedPage()) return;
-    const domMap = scanDom();
+    if (!isAllowedPage(location.hash)) return;
+    const domMap = scanDom(document.querySelectorAll(SEL_UNREAD_ROW));
     if (!domMap.size) { removeBar(); return; }
     renderBar([...domMap.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, MAX_CHIPS));
   }
@@ -224,7 +166,7 @@
       removeBar();
       removeBackBar();
 
-      if (isAllowedPage()) {
+      if (isAllowedPage(hash)) {
         sessionStorage.removeItem(BACK_KEY);
         showLoadingBar();
         resetStabilizeTimer();
@@ -250,7 +192,7 @@
   // ── MutationObserver ─────────────────────────────────────────────────────────
 
   const observer = new MutationObserver((mutations) => {
-    if (!isAllowedPage()) return;
+    if (!isAllowedPage(location.hash)) return;
 
     const relevant = mutations.some((m) => {
       if (m.type !== 'childList') return false;
@@ -271,7 +213,7 @@
     observer.observe(document.body, { childList: true, subtree: true });
     watchNavigation();
 
-    if (isAllowedPage()) {
+    if (isAllowedPage(location.hash)) {
       showLoadingBar();
       resetStabilizeTimer();
     }
