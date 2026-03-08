@@ -49,9 +49,9 @@
     return `https://mail.google.com/mail/u/${getAccountIndex()}/#search/${q}`;
   }
 
-  // Strip the +tag from an email address: lenny+foo@sub.com → lenny@sub.com
+  // Normalise an email address: lowercase, trim, strip +tag
   function normalizeEmail(email) {
-    return email.replace(/\+[^@]*@/, '@');
+    return email.toLowerCase().trim().replace(/\+[^@]*@/, '@');
   }
 
   // Returns { email, name } from a thread row, or null if no email found
@@ -60,7 +60,7 @@
     if (s) {
       const addr = s.getAttribute('email');
       if (addr && addr.includes('@')) {
-        return { email: normalizeEmail(addr.toLowerCase().trim()), name: s.getAttribute('name') || s.textContent.trim() };
+        return { email: normalizeEmail(addr), name: s.getAttribute('name') || s.textContent.trim() };
       }
     }
     const zf = row.querySelector(SEL_SENDER_ZF);
@@ -69,11 +69,11 @@
       const angleMatch = title.match(/<([^>]+@[^>]+)>/);
       if (angleMatch) {
         const nameMatch = title.match(/^(.+?)\s*</);
-        return { email: normalizeEmail(angleMatch[1].toLowerCase().trim()), name: nameMatch ? nameMatch[1].trim() : angleMatch[1] };
+        return { email: normalizeEmail(angleMatch[1]), name: nameMatch ? nameMatch[1].trim() : angleMatch[1] };
       }
-      if (title.includes('@')) return { email: normalizeEmail(title.toLowerCase().trim()), name: title.trim() };
+      if (title.includes('@')) return { email: normalizeEmail(title), name: title.trim() };
       const t = zf.textContent.trim();
-      if (t.includes('@')) return { email: normalizeEmail(t.toLowerCase()), name: t };
+      if (t.includes('@')) return { email: normalizeEmail(t), name: t };
     }
     return null;
   }
@@ -92,12 +92,6 @@
     return map;
   }
 
-  function sortAndSlice(map) {
-    return [...map.entries()]
-      .sort((a, b) => b[1].count - a[1].count)
-      .slice(0, MAX_CHIPS);
-  }
-
   // ── Scan ─────────────────────────────────────────────────────────────────────
 
   function doScan() {
@@ -105,7 +99,7 @@
     if (!isAllowedPage()) return;
     const domMap = scanDom();
     if (!domMap.size) { removeBar(); return; }
-    renderBar(sortAndSlice(domMap));
+    renderBar([...domMap.entries()].sort((a, b) => b[1].count - a[1].count).slice(0, MAX_CHIPS));
   }
 
   function resetStabilizeTimer() {
