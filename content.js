@@ -1,10 +1,10 @@
 (() => {
-  const BAR_ID        = 'gsf-filter-bar';
-  const BACK_BAR_ID   = 'gsf-back-bar';
-  const MAX_CHIPS     = 50;
-  const BACK_KEY      = 'gsf_back_url';
-  const STABILIZE_MS  = 800;   // ms after last mutation before scanning
-  const FALLBACK_MS   = 6000;  // hard timeout if threads never change
+  const BAR_ID       = 'gsf-filter-bar';
+  const BACK_BAR_ID  = 'gsf-back-bar';
+  const MAX_CHIPS    = 50;
+  const BACK_KEY     = 'gsf_back_url';
+  const STABILIZE_MS = 800;
+  const FALLBACK_MS  = 6000;
 
   // ── Gmail DOM selectors ──────────────────────────────────────────────────────
   const SEL_THREAD_ROW  = 'tr.zA';
@@ -12,14 +12,26 @@
   const SEL_SENDER_SPAN = 'span[email]';
   const SEL_SENDER_ZF   = 'span.zF';
 
+  // Candidates tried in order when injecting the filter bar
+  const INJECT_CANDIDATES = [
+    'div[role="main"] .ae4',
+    'div[role="main"] .Cp',
+    'div[gh="tl"]',
+    'div[role="main"]',
+  ];
+
   // ── State ────────────────────────────────────────────────────────────────────
-  let lastHash              = '';
-  let lastRenderKey         = '';
-  let stabilizeTimer        = null;
-  let fallbackTimer         = null;
-  let navDebounce           = null;
-  let awaitingThreadChange  = false;   // true after nav, until thread list swaps
-  let preNavFingerprint     = '';      // thread list state captured just before nav
+  let lastHash      = '';
+  let lastRenderKey = '';
+  let stabilizeTimer = null;
+  let fallbackTimer  = null;
+  let navDebounce    = null;
+
+  // Encapsulates the "waiting for Gmail to swap the thread list after nav" state
+  const navState = {
+    awaitingChange: false,
+    fingerprint: '',
+  };
 
   // ── URL allowlist ─────────────────────────────────────────────────────────────
 
@@ -29,8 +41,6 @@
   }
 
   // ── Thread list fingerprint ───────────────────────────────────────────────────
-  // A cheap snapshot of the current thread list so we can detect when Gmail
-  // has actually replaced the rows after navigation.
 
   function threadFingerprint() {
     const rows = document.querySelectorAll(SEL_THREAD_ROW);
@@ -39,40 +49,6 @@
   }
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
-
-  function extractEmail(row) {
-    const s = row.querySelector(SEL_SENDER_SPAN);
-    if (s) {
-      const addr = s.getAttribute('email');
-      if (addr && addr.includes('@')) return addr.toLowerCase().trim();
-    }
-    const zf = row.querySelector(SEL_SENDER_ZF);
-    if (zf) {
-      const title = zf.getAttribute('title') || '';
-      const m = title.match(/<([^>]+@[^>]+)>/);
-      if (m) return m[1].toLowerCase().trim();
-      if (title.includes('@')) return title.toLowerCase().trim();
-      const t = zf.textContent.trim();
-      if (t.includes('@')) return t.toLowerCase();
-    }
-    return null;
-  }
-
-  function extractName(row) {
-    const s = row.querySelector(SEL_SENDER_SPAN);
-    if (s) {
-      const name = s.getAttribute('name') || s.textContent.trim();
-      if (name) return name;
-    }
-    const zf = row.querySelector(SEL_SENDER_ZF);
-    if (zf) {
-      const title = zf.getAttribute('title') || '';
-      const m = title.match(/^(.+?)\s*</);
-      if (m) return m[1].trim();
-      return zf.textContent.trim();
-    }
-    return null;
-  }
 
   function getAccountIndex() {
     const m = location.pathname.match(/\/u\/(\d+)\//);
@@ -84,17 +60,40 @@
     return `https://mail.google.com/mail/u/${getAccountIndex()}/#search/${q}`;
   }
 
+  // Returns { email, name } from a thread row, or null if no email found
+  function extractSender(row) {
+    const s = row.querySelector(SEL_SENDER_SPAN);
+    if (s) {
+      const addr = s.getAttribute('email');
+      if (addr && addr.includes('@')) {
+        return { email: addr.toLowerCase().trim(), name: s.getAttribute('name') || s.textContent.trim() };
+      }
+    }
+    const zf = row.querySelector(SEL_SENDER_ZF);
+    if (zf) {
+      const title = zf.getAttribute('title') || '';
+      const angleMatch = title.match(/<([^>]+@[^>]+)>/);
+      if (angleMatch) {
+        const nameMatch = title.match(/^(.+?)\s*</);
+        return { email: angleMatch[1].toLowerCase().trim(), name: nameMatch ? nameMatch[1].trim() : angleMatch[1] };
+      }
+      if (title.includes('@')) return { email: title.toLowerCase().trim(), name: title.trim() };
+      const t = zf.textContent.trim();
+      if (t.includes('@')) return { email: t.toLowerCase(), name: t };
+    }
+    return null;
+  }
+
   // ── DOM scan ─────────────────────────────────────────────────────────────────
 
   function scanDom() {
     const map = new Map();
     for (const row of document.querySelectorAll(SEL_UNREAD_ROW)) {
-      // Skip rows hidden by Gmail (accumulated from previous view navigations)
-      if (!row.offsetParent) continue;
-      const email = extractEmail(row);
-      if (!email) continue;
-      if (!map.has(email)) map.set(email, { name: extractName(row) || email, count: 0 });
-      map.get(email).count++;
+      if (!row.offsetParent) continue; // skip rows hidden by Gmail from previous views
+      const sender = extractSender(row);
+      if (!sender) continue;
+      if (!map.has(sender.email)) map.set(sender.email, { name: sender.name, count: 0 });
+      map.get(sender.email).count++;
     }
     return map;
   }
@@ -110,9 +109,8 @@
   function doScan() {
     clearTimeout(fallbackTimer);
     clearTimeout(stabilizeTimer);
-    awaitingThreadChange = false;
+    navState.awaitingChange = false;
     if (!isAllowedPage()) return;
-
     const domMap = scanDom();
     if (!domMap.size) { removeBar(); return; }
     renderBar(sortAndSlice(domMap));
@@ -123,6 +121,36 @@
     stabilizeTimer = setTimeout(doScan, STABILIZE_MS);
   }
 
+  // ── Bar helpers ───────────────────────────────────────────────────────────────
+
+  function getOrCreateBar() {
+    let bar = document.getElementById(BAR_ID);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = BAR_ID;
+      if (!injectBar(bar)) return null;
+    }
+    bar.innerHTML = '';
+    const label = document.createElement('span');
+    label.className = 'gsf-label';
+    label.textContent = 'Filter By Sender';
+    bar.appendChild(label);
+    return bar;
+  }
+
+  function injectBar(bar) {
+    for (const sel of INJECT_CANDIDATES) {
+      const target = document.querySelector(sel);
+      if (target) { target.insertAdjacentElement('afterbegin', bar); return true; }
+    }
+    return false;
+  }
+
+  function removeBar() {
+    document.getElementById(BAR_ID)?.remove();
+    lastRenderKey = '';
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   function renderBar(entries) {
@@ -130,29 +158,15 @@
     if (newKey === lastRenderKey) return;
     lastRenderKey = newKey;
 
-    let bar = document.getElementById(BAR_ID);
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = BAR_ID;
-      if (!injectBar(bar)) return;
-    }
-
-    bar.innerHTML = '';
-
-    const label = document.createElement('span');
-    label.className = 'gsf-label';
-    label.textContent = 'Filter By Sender';
-    bar.appendChild(label);
+    const bar = getOrCreateBar();
+    if (!bar) return;
 
     for (const [email, { name, count }] of entries) {
       const chip = document.createElement('a');
       chip.className = 'gsf-chip';
       chip.href = buildSearchUrl(email);
       chip.title = `Show all unread from ${email}`;
-
-      chip.addEventListener('click', () => {
-        sessionStorage.setItem(BACK_KEY, location.href);
-      });
+      chip.addEventListener('click', () => sessionStorage.setItem(BACK_KEY, location.href));
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'gsf-chip-name';
@@ -169,19 +183,9 @@
   }
 
   function showLoadingBar() {
-    let bar = document.getElementById(BAR_ID);
-    if (!bar) {
-      bar = document.createElement('div');
-      bar.id = BAR_ID;
-      if (!injectBar(bar)) return;
-    }
-    bar.innerHTML = '';
+    const bar = getOrCreateBar();
+    if (!bar) return;
     lastRenderKey = '';
-
-    const label = document.createElement('span');
-    label.className = 'gsf-label';
-    label.textContent = 'Filter By Sender';
-    bar.appendChild(label);
 
     const spinner = document.createElement('span');
     spinner.className = 'gsf-spinner';
@@ -191,25 +195,6 @@
     hint.className = 'gsf-loading-text';
     hint.textContent = 'Loading…';
     bar.appendChild(hint);
-  }
-
-  function injectBar(bar) {
-    const candidates = [
-      () => document.querySelector('div[role="main"] .ae4'),
-      () => document.querySelector('div[role="main"] .Cp'),
-      () => document.querySelector('div[gh="tl"]'),
-      () => document.querySelector('div[role="main"]'),
-    ];
-    for (const fn of candidates) {
-      const target = fn();
-      if (target) { target.insertAdjacentElement('afterbegin', bar); return true; }
-    }
-    return false;
-  }
-
-  function removeBar() {
-    document.getElementById(BAR_ID)?.remove();
-    lastRenderKey = '';
   }
 
   // ── Back button ───────────────────────────────────────────────────────────────
@@ -257,11 +242,8 @@
       if (isAllowedPage()) {
         sessionStorage.removeItem(BACK_KEY);
         showLoadingBar();
-        // Snapshot the thread list RIGHT NOW (before Gmail swaps it).
-        // The MutationObserver will start the scan only once this changes.
-        preNavFingerprint  = threadFingerprint();
-        awaitingThreadChange = true;
-        // Hard fallback in case threads never change
+        navState.fingerprint    = threadFingerprint();
+        navState.awaitingChange = true;
         fallbackTimer = setTimeout(doScan, FALLBACK_MS);
       } else if (sessionStorage.getItem(BACK_KEY)) {
         showBackBar();
@@ -269,12 +251,24 @@
     }, 100);
   }
 
+  function watchNavigation() {
+    window.addEventListener('hashchange', onNavigate);
+    window.addEventListener('popstate',   onNavigate);
+
+    const origPush    = history.pushState.bind(history);
+    const origReplace = history.replaceState.bind(history);
+    history.pushState    = (...a) => { origPush(...a);    onNavigate(); };
+    history.replaceState = (...a) => { origReplace(...a); onNavigate(); };
+
+    // Fallback: catch any navigation Gmail handles before our overrides
+    setInterval(() => { if (location.hash !== lastHash) onNavigate(); }, 500);
+  }
+
   // ── MutationObserver ─────────────────────────────────────────────────────────
 
   const observer = new MutationObserver((mutations) => {
     if (!isAllowedPage()) return;
 
-    // Ignore mutations caused by our own bar
     const relevant = mutations.some((m) => {
       if (m.type !== 'childList') return false;
       if (m.target.closest?.(`#${BAR_ID}`) || m.target.id === BAR_ID) return false;
@@ -285,15 +279,14 @@
     });
     if (!relevant) return;
 
-    if (awaitingThreadChange) {
+    if (navState.awaitingChange) {
       const current = threadFingerprint();
-      if (current !== preNavFingerprint) {
-        awaitingThreadChange = false;
-        preNavFingerprint = current;
+      if (current !== navState.fingerprint) {
+        navState.awaitingChange = false;
+        navState.fingerprint    = current;
         resetStabilizeTimer();
       }
     } else {
-      // Normal background updates — reset stabilize timer
       resetStabilizeTimer();
     }
   });
@@ -302,20 +295,12 @@
 
   function init() {
     observer.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('hashchange', onNavigate);
-    window.addEventListener('popstate',   onNavigate);
-
-    const origPush    = history.pushState.bind(history);
-    const origReplace = history.replaceState.bind(history);
-    history.pushState    = (...a) => { origPush(...a);    onNavigate(); };
-    history.replaceState = (...a) => { origReplace(...a); onNavigate(); };
-
-    setInterval(() => { if (location.hash !== lastHash) onNavigate(); }, 500);
+    watchNavigation();
 
     if (isAllowedPage()) {
       showLoadingBar();
-      preNavFingerprint  = '';
-      awaitingThreadChange = true;
+      navState.fingerprint    = '';
+      navState.awaitingChange = true;
       fallbackTimer = setTimeout(doScan, FALLBACK_MS);
     }
   }
