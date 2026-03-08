@@ -3,11 +3,9 @@
   const BACK_BAR_ID  = 'gsf-back-bar';
   const MAX_CHIPS    = 50;
   const BACK_KEY     = 'gsf_back_url';
-  const STABILIZE_MS = 800;
-  const FALLBACK_MS  = 6000;
+  const STABILIZE_MS = 400;
 
   // ── Gmail DOM selectors ──────────────────────────────────────────────────────
-  const SEL_THREAD_ROW  = 'tr.zA';
   const SEL_UNREAD_ROW  = 'tr.zA.zE';
   const SEL_SENDER_SPAN = 'span[email]';
   const SEL_SENDER_ZF   = 'span.zF';
@@ -24,28 +22,14 @@
   let lastHash      = '';
   let lastRenderKey = '';
   let stabilizeTimer = null;
-  let fallbackTimer  = null;
   let navDebounce    = null;
 
-  // Encapsulates the "waiting for Gmail to swap the thread list after nav" state
-  const navState = {
-    awaitingChange: false,
-    fingerprint: '',
-  };
 
   // ── URL allowlist ─────────────────────────────────────────────────────────────
 
   function isAllowedPage() {
     const hash = decodeURIComponent(location.hash);
     return hash === '#inbox' || hash.startsWith('#section_query/');
-  }
-
-  // ── Thread list fingerprint ───────────────────────────────────────────────────
-
-  function threadFingerprint() {
-    const rows = document.querySelectorAll(SEL_THREAD_ROW);
-    const first = rows[0]?.textContent?.trim().slice(0, 60) || '';
-    return `${rows.length}::${first}`;
   }
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
@@ -107,9 +91,7 @@
   // ── Scan ─────────────────────────────────────────────────────────────────────
 
   function doScan() {
-    clearTimeout(fallbackTimer);
     clearTimeout(stabilizeTimer);
-    navState.awaitingChange = false;
     if (!isAllowedPage()) return;
     const domMap = scanDom();
     if (!domMap.size) { removeBar(); return; }
@@ -235,16 +217,13 @@
       lastHash = hash;
 
       clearTimeout(stabilizeTimer);
-      clearTimeout(fallbackTimer);
       removeBar();
       removeBackBar();
 
       if (isAllowedPage()) {
         sessionStorage.removeItem(BACK_KEY);
         showLoadingBar();
-        navState.fingerprint    = threadFingerprint();
-        navState.awaitingChange = true;
-        fallbackTimer = setTimeout(doScan, FALLBACK_MS);
+        resetStabilizeTimer();
       } else if (sessionStorage.getItem(BACK_KEY)) {
         showBackBar();
       }
@@ -279,16 +258,7 @@
     });
     if (!relevant) return;
 
-    if (navState.awaitingChange) {
-      const current = threadFingerprint();
-      if (current !== navState.fingerprint) {
-        navState.awaitingChange = false;
-        navState.fingerprint    = current;
-        resetStabilizeTimer();
-      }
-    } else {
-      resetStabilizeTimer();
-    }
+    resetStabilizeTimer();
   });
 
   // ── Boot ─────────────────────────────────────────────────────────────────────
@@ -299,9 +269,7 @@
 
     if (isAllowedPage()) {
       showLoadingBar();
-      navState.fingerprint    = '';
-      navState.awaitingChange = true;
-      fallbackTimer = setTimeout(doScan, FALLBACK_MS);
+      resetStabilizeTimer();
     }
   }
 
