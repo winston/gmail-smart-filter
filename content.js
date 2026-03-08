@@ -29,7 +29,12 @@
 
   function isAllowedPage() {
     const hash = decodeURIComponent(location.hash);
-    return hash === '#inbox' || hash.startsWith('#section_query/');
+    if (hash === '#inbox') return true;
+    if (hash.startsWith('#section_query/')) {
+      // Exclude individual email views: #section_query/QUERY/MESSAGE_ID
+      return !hash.slice('#section_query/'.length).includes('/');
+    }
+    return false;
   }
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
