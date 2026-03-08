@@ -1,0 +1,131 @@
+/* Gmail Smart Filter — injected bar */
+
+#gsf-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 12px 7px 16px;
+  background: #f6f8fc;
+  border-bottom: 1px solid #e0e0e0;
+  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+  font-size: 13px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+.gsf-label {
+  color: #5f6368;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-basis: 100%;
+}
+
+.gsf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #dadce0;
+  color: #202124;
+  text-decoration: none;
+  font-size: 12.5px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: background 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  width: 170px;
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.gsf-chip:hover {
+  background: #e8f0fe;
+  border-color: #4285f4;
+  box-shadow: 0 1px 3px rgba(66, 133, 244, 0.2);
+  color: #1a73e8;
+}
+
+.gsf-chip:active {
+  background: #d2e3fc;
+}
+
+.gsf-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+}
+
+.gsf-chip-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: #1a73e8;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.gsf-chip:hover .gsf-chip-badge {
+  background: #1558b0;
+}
+
+#gsf-back-bar {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  font-family: 'Google Sans', Roboto, Arial, sans-serif;
+}
+
+.gsf-back-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 18px;
+  border-radius: 20px;
+  background: #fff;
+  border: 1px solid #dadce0;
+  color: #1a73e8;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.gsf-back-btn:hover {
+  background: #e8f0fe;
+  border-color: #4285f4;
+  box-shadow: 0 3px 12px rgba(66, 133, 244, 0.25);
+}
+
+.gsf-loading-text {
+  color: #80868b;
+  font-size: 12px;
+}
+
+.gsf-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid #dadce0;
+  border-top-color: #1a73e8;
+  border-radius: 50%;
+  animation: gsf-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes gsf-spin {
+  to { transform: rotate(360deg); }
+}

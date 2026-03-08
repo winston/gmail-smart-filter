@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Gmail Smart Filter",
+  "version": "1.0.0",
+  "description": "Injects smart sender filter links with unread counts into Gmail.",
+  "permissions": [],
+  "host_permissions": [
+    "https://mail.google.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Gmail Smart Filter"
+  }
+}
