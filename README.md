@@ -2,7 +2,7 @@
 
 A Chrome extension that injects a "Filter By Sender" bar into Gmail's inbox, showing clickable chips for each unread sender grouped by count.
 
-![Gmail Smart Filter bar with sender chips](icons/icon128.png)
+![Gmail Smart Filter bar with sender chips](screenshot.png)
 
 ## Features
 
